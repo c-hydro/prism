@@ -1,7 +1,7 @@
 """
 Library Features:
 
-Name:          drv_model_griso_generic
+Name:          libs_model_griso_generic
 Author(s):     Andrea Libertino (andrea.libertino@cimafoundation.org)
                Flavio Pignone (flavio.pignone@cimafoundation.org)
 Date:          '20211026'
@@ -19,11 +19,9 @@ from scipy.signal import correlate
 from copy import deepcopy
 import pandas as pd
 from itertools import combinations
-import xarray as xr
-import matplotlib.pyplot as plt
 from multiprocessing import Pool, Manager
 
-from src.hyde.driver.model.griso.drv_model_griso_generic import deg2km, spheric, averageCells, cart2pol, sphericalFit
+from prism.libs.griso.libs_model_griso_generic import deg2km, spheric, averageCells, cart2pol, sphericalFit
 
 # -------------------------------------------------------------------------------------
 

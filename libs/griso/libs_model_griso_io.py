@@ -1,7 +1,7 @@
 """
 Library Features:
 
-Name:          drv_model_griso_generic
+Name:          libs_model_griso_generic
 Author(s):     Andrea Libertino (andrea.libertino@cimafoundation.org)
                Flavio Pignone (flavio.pignone@cimafoundation.org)
 Date:          '20211026'
@@ -11,7 +11,6 @@ Version:       '2.0.0'
 import logging
 import pandas as pd
 import numpy as np
-import sys
 import os
 import xarray as xr
 import rasterio as rio

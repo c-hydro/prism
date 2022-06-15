@@ -1,7 +1,7 @@
 """
-HyDE Processing Tool - Modified Conditional Merging with GRISO
-__date__ = '20211026'
-__version__ = '2.5.0'
+prism - Modified Conditional Merging with GRISO
+__date__ = '20220302'
+__version__ = '2.5.1'
 __author__ =
         'Flavio Pignone (flavio.pignone@cimafoundation.org',
         'Andrea Libertino (andrea.libertino@cimafoundation.org',
@@ -30,7 +30,6 @@ Version(s):
 # -------------------------------------------------------------------------------------
 # Complete library
 import os
-import sys
 import copy
 import logging
 from os.path import join
@@ -45,17 +44,17 @@ import matplotlib.pyplot as plt
 import fnmatch
 import netrc
 
-from src.hyde.driver.model.griso.drv_model_griso_exec import GrisoCorrel, GrisoInterpola, GrisoPreproc
-from src.hyde.driver.model.griso.drv_model_griso_io import importDropsData, importTimeSeries, check_and_write_dataarray, write_raster, read_file_tiff, read_point_data
+from prism.libs.griso.libs_model_griso_exec import GrisoCorrel, GrisoInterpola, GrisoPreproc
+from prism.libs.griso.libs_model_griso_io import importDropsData, importTimeSeries, check_and_write_dataarray, write_raster, read_file_tiff, read_point_data
 # -------------------------------------------------------------------------------------
 # Script Main
 def main():
 
     # -------------------------------------------------------------------------------------
     # Version and algorithm information
-    alg_name = 'HyDE Processing Tool - Modified Conditional Merging with GRISO '
-    alg_version = '2.5.0'
-    alg_release = '2021-09-20'
+    alg_name = 'prism - Modified Conditional Merging '
+    alg_version = '2.5.1'
+    alg_release = '2022-03-02'
     # -------------------------------------------------------------------------------------
 
     # -------------------------------------------------------------------------------------
@@ -388,7 +387,9 @@ def main():
         if data_settings['algorithm']['flags']['compressed_gridded_input']:
             os.system('gzip ' + gridded_in_time_step)
 
-    # -------------------------------------------------------------------------------------
+    # ----------------------------------------------------------------------------
+
+    # ----------------------------------------------------------------------------
     # Info algorithm
     time_elapsed = round(time.time() - start_time, 1)
 
@@ -398,9 +399,9 @@ def main():
     logging.info(' ==> ... END')
     logging.info(' ==> Bye, Bye')
     logging.info(' ============================================================================ ')
-    # -------------------------------------------------------------------------------------
+    # ----------------------------------------------------------------------------
 
-# -------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # Method to read file json
 def read_file_json(file_name):
 
@@ -430,9 +431,9 @@ def read_file_json(file_name):
                 json_block = []
 
     return json_dict
-# -------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
-# -------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # Method to get script argument(s)
 def get_args():
     parser_handle = ArgumentParser()
@@ -451,9 +452,9 @@ def get_args():
         alg_time = None
 
     return alg_settings, alg_time
-# -------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
-# -------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 # Method to set logging information
 def set_logging(logger_file='log.txt', logger_format=None):
     if logger_format is None:
@@ -483,10 +484,12 @@ def set_logging(logger_file='log.txt', logger_format=None):
     # Add handle to logging
     logging.getLogger('').addHandler(logger_handle_1)
     logging.getLogger('').addHandler(logger_handle_2)
-# -------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------
 # Call script from external library
 if __name__ == "__main__":
     main()
+# ----------------------------------------------------------------------------
+
 # ----------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 """
 Library Features:
 
-Name:          drv_model_griso_generic
+Name:          libs_model_griso_generic
 Author(s):     Andrea Libertino (andrea.libertino@cimafoundation.org)
                Flavio Pignone (flavio.pignone@cimafoundation.org)
 Date:          '20211026'
