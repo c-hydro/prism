@@ -1,15 +1,17 @@
 """
 prism - Modified Conditional Merging with GRISO
 __date__ = '20220302'
-__version__ = '2.5.1'
+__version__ = '2.5.2'
 __author__ =
         'Flavio Pignone (flavio.pignone@cimafoundation.org',
         'Andrea Libertino (andrea.libertino@cimafoundation.org',
         'Fabio Delogu (fabio.delogu@cimafoundation.org',
-__library__ = 'hyde'
+__library__ = 'prism'
 General command line:
 ### python hyde_data_dynamic_modified_conditional_merging.py -settings_file "settings.json" -time "YYYY-MM-DD HH:MM"
 Version(s):
+20220704 (2.5.2) --> Added support to sub-hourly merging
+                     Moved to prism repository
 20220302 (2.5.1) --> Fixed management of absence of point measurements
 20211026 (2.5.0) --> Added theoretical kernel estimation
                      Bug fixes, major system optimizations
@@ -74,8 +76,10 @@ def main():
     settings_file, alg_time = get_args()
     dateRun = datetime.strptime(alg_time, "%Y-%m-%d %H:%M")
 
-    startRun = dateRun - timedelta(hours=data_settings['data']['dynamic']['time']['time_observed_period']-1)
-    endRun = dateRun + timedelta(hours=data_settings['data']['dynamic']['time']['time_forecast_period'])
+    startRun = dateRun - data_settings['data']['dynamic']['time']['time_observed_period'] * pd.Timedelta(
+        data_settings['data']['dynamic']['time']['time_frequency'])
+    endRun = dateRun + data_settings['data']['dynamic']['time']['time_forecast_period'] * pd.Timedelta(
+        data_settings['data']['dynamic']['time']['time_frequency'])
 
     # -------------------------------------------------------------------------------------
 
@@ -112,6 +116,20 @@ def main():
     if len([x for x in computation_settings if x]) > 1 or len([x for x in computation_settings if x]) == 0:
         logging.error(' ----> ERROR! Please choose if use local data or download stations trough drops2!')
         raise ValueError("Data sources flags are mutually exclusive!")
+
+    # Output format
+    if data_settings['data']['outcome']['format'].lower() == 'netcdf' or data_settings['data']['outcome'][
+        'format'].lower() == 'nc':
+        format_out = 'nc'
+    elif fnmatch.fnmatch(data_settings['data']['outcome']['format'], '*tif*'):
+        format_out = 'GTiff'
+    elif fnmatch.fnmatch(data_settings['data']['outcome']['format'], '*txt*'):
+        format_out = 'AAIGrid'
+    else:
+        logging.error('ERROR! Unknown or unsupported output format! ')
+        raise ValueError("Supported output formats are netcdf and GTiff")
+
+    logging.info(' ---> Format for output : ' + format_out)
 
     # Debug mode
     try:
@@ -154,7 +172,7 @@ def main():
 
     # -------------------------------------------------------------------------------------
     # Loop across time steps
-    for timeNow in pd.date_range(start=startRun, end=endRun, freq=data_settings['data']['dynamic']['time']['time_frequency']):
+    for timeNow in pd.date_range(start=startRun, end=endRun, closed='right', freq=data_settings['data']['dynamic']['time']['time_frequency']):
         logging.info(' ---> Computing time step ' + timeNow.strftime("%Y-%m-%d %H:%M:00"))
 
         # Compute time step file names
@@ -232,7 +250,8 @@ def main():
                 logging.warning(' ----> WARNING! No valid gauge data available for time step')
                 logging.warning(' ----> Use unconditioned radar map as output')
                 sat_out = copy.deepcopy(sat)
-                sat_out.to_netcdf(file_out_time_step)
+                sat_out_value = sat_out['precip'].squeeze().values
+                write_output(sat_out_value, sat_out, format_out, file_out_time_step, gridded_in_time_step)
                 continue
             else:
                 logging.error(' ----> ERROR! No valid data available for time step')
@@ -354,30 +373,9 @@ def main():
         logging.info(' ---> Make and save figure...DONE')
 
         # Save output
-        logging.info(' ---> Save output map in ' + data_settings['data']['outcome'][
-            'format'].lower() + ' format')
+        logging.info(' ---> Save output map in ' + format_out + ' format')
 
-        if data_settings['data']['outcome']['format'].lower() == 'netcdf' or data_settings['data']['outcome'][
-            'format'].lower() == 'nc':
-
-            logging.info(' ---> Saving outfile in netcdf format ' + os.path.basename(file_out_time_step))
-            mcm_out.to_netcdf(file_out_time_step)
-
-        elif fnmatch.fnmatch(data_settings['data']['outcome']['format'],'*tif*'):
-            logging.info(' ---> Saving outfile in GTiff format ' + os.path.basename(file_out_time_step))
-
-            grid = xr.open_rasterio(gridded_in_time_step)
-            write_raster(conditioned_sat, grid, file_out_time_step, driver='GTiff')
-
-        elif (fnmatch.fnmatch(data_settings['data']['outcome']['format'], '*txt*')
-              or fnmatch.fnmatch(data_settings['data']['outcome']['format'], 'AAIGrid')):
-
-            grid = xr.open_rasterio(gridded_in_time_step)
-            write_raster(conditioned_sat, grid, file_out_time_step, driver='AAIGrid')
-
-        else:
-            logging.error('ERROR! Unknown or unsupported output format! ')
-            raise ValueError("Supported output formats are netcdf and GTiff")
+        write_output(conditioned_sat, mcm_out, format_out, file_out_time_step, gridded_in_time_step)
 
         if data_settings['algorithm']['flags']['compress_output']:
             os.system('gzip -f ' + file_out_time_step)
@@ -400,6 +398,17 @@ def main():
     logging.info(' ==> Bye, Bye')
     logging.info(' ============================================================================ ')
     # ----------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------
+# Method to write output files
+def write_output(array, dataarray, format, file_out_time_step, gridded_in_time_step):
+    if format == 'nc':
+        logging.info(' ---> Saving outfile in netcdf format ' + os.path.basename(file_out_time_step))
+        dataarray.to_netcdf(file_out_time_step)
+    else:
+        grid = xr.open_rasterio(gridded_in_time_step)
+        write_raster(array, grid, file_out_time_step, driver=format)
+# ----------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------
 # Method to read file json
