@@ -1,15 +1,19 @@
 """
 prism - Modified Conditional Merging with GRISO
-__date__ = '20220302'
-__version__ = '2.5.1'
+__date__ = '20220726'
+__version__ = '2.5.3'
 __author__ =
         'Flavio Pignone (flavio.pignone@cimafoundation.org',
         'Andrea Libertino (andrea.libertino@cimafoundation.org',
         'Fabio Delogu (fabio.delogu@cimafoundation.org',
-__library__ = 'hyde'
+__library__ = 'prism'
 General command line:
 ### python hyde_data_dynamic_modified_conditional_merging.py -settings_file "settings.json" -time "YYYY-MM-DD HH:MM"
 Version(s):
+20220726 (2.5.3) --> Added griso backup if gridded data not available
+                     Fixed bug for sub-hourly drops2 aggregation
+20220704 (2.5.2) --> Added support to sub-hourly merging
+                     Moved to prism repository
 20220302 (2.5.1) --> Fixed management of absence of point measurements
 20211026 (2.5.0) --> Added theoretical kernel estimation
                      Bug fixes, major system optimizations
@@ -53,8 +57,8 @@ def main():
     # -------------------------------------------------------------------------------------
     # Version and algorithm information
     alg_name = 'prism - Modified Conditional Merging '
-    alg_version = '2.5.1'
-    alg_release = '2022-03-02'
+    alg_version = '2.5.3'
+    alg_release = '2022-07-26'
     # -------------------------------------------------------------------------------------
 
     # -------------------------------------------------------------------------------------
@@ -74,8 +78,10 @@ def main():
     settings_file, alg_time = get_args()
     dateRun = datetime.strptime(alg_time, "%Y-%m-%d %H:%M")
 
-    startRun = dateRun - timedelta(hours=data_settings['data']['dynamic']['time']['time_observed_period']-1)
-    endRun = dateRun + timedelta(hours=data_settings['data']['dynamic']['time']['time_forecast_period'])
+    startRun = dateRun - data_settings['data']['dynamic']['time']['time_observed_period'] * pd.Timedelta(
+        data_settings['data']['dynamic']['time']['time_frequency'])
+    endRun = dateRun + data_settings['data']['dynamic']['time']['time_forecast_period'] * pd.Timedelta(
+        data_settings['data']['dynamic']['time']['time_frequency'])
 
     # -------------------------------------------------------------------------------------
 
@@ -113,6 +119,20 @@ def main():
         logging.error(' ----> ERROR! Please choose if use local data or download stations trough drops2!')
         raise ValueError("Data sources flags are mutually exclusive!")
 
+    # Output format
+    if data_settings['data']['outcome']['format'].lower() == 'netcdf' or data_settings['data']['outcome'][
+        'format'].lower() == 'nc':
+        format_out = 'nc'
+    elif fnmatch.fnmatch(data_settings['data']['outcome']['format'], '*tif*'):
+        format_out = 'GTiff'
+    elif fnmatch.fnmatch(data_settings['data']['outcome']['format'], '*txt*'):
+        format_out = 'AAIGrid'
+    else:
+        logging.error('ERROR! Unknown or unsupported output format! ')
+        raise ValueError("Supported output formats are netcdf and GTiff")
+
+    logging.info(' ---> Format for output : ' + format_out)
+
     # Debug mode
     try:
         debug_mode = data_settings['algorithm']['flags']['debug_mode']
@@ -144,6 +164,7 @@ def main():
                 logging.error(' --> Valid netrc authentication file not found in home directory! Generate it or provide user and password in the settings!')
                 raise FileNotFoundError(
                     'Verify that your .netrc file exists in the home directory and that it includes proper credentials!')
+        drops_settings["time_aggregation"] = data_settings['data']['dynamic']['time']['time_frequency']
         dfData, dfStations = importDropsData(drops_settings=drops_settings, start_time=dateRun - timedelta(hours=data_settings['data']['dynamic']['time']['time_observed_period']), end_time=dateRun, time_frequency= data_settings['data']['dynamic']['time']['time_frequency'])
     elif data_settings['algorithm']['flags']["sources"]['use_timeseries']:
         logging.info(' --> Station data source: station time series')
@@ -154,8 +175,9 @@ def main():
 
     # -------------------------------------------------------------------------------------
     # Loop across time steps
-    for timeNow in pd.date_range(start=startRun, end=endRun, freq=data_settings['data']['dynamic']['time']['time_frequency']):
+    for timeNow in pd.date_range(start=startRun, end=endRun, closed='right', freq=data_settings['data']['dynamic']['time']['time_frequency']):
         logging.info(' ---> Computing time step ' + timeNow.strftime("%Y-%m-%d %H:%M:00"))
+        backup_griso = False
 
         # Compute time step file names
         file_out_time_step = os.path.join(data_settings['data']['outcome']['folder'], data_settings['data']['outcome']['filename'])
@@ -204,8 +226,14 @@ def main():
                 logging.error(" ---> ERROR! Only netcdf or tif inputs are supported for grid files")
                 raise NotImplementedError("Please, choose 'netcdf' or 'tif' in the setting file!")
         except FileNotFoundError:
-            logging.error('----> ERROR! File ' + os.path.basename(gridded_in_time_step) + ' not found!')
-            raise FileNotFoundError
+            if not data_settings['algorithm']['flags']['raise_error_if_no_gridded_available']:
+                sat = read_file_tiff(data_settings['data']['static']['backup_grid'], var_name='precip', time=[timeNow], \
+                                     coord_name_x='lon', coord_name_y='lat', dim_name_y='lat', dim_name_x='lon')
+                backup_griso = True
+                logging.error('----> WARNING! File ' + os.path.basename(gridded_in_time_step) + ' not found! Backup on griso only!')
+            else:
+                logging.error('----> ERROR! File ' + os.path.basename(gridded_in_time_step) + ' not found!')
+                raise FileNotFoundError
 
         if data_settings['data']['dynamic']['source_gridded']['file_type'] == "netcdf":
             sat = sat.rename({data_settings['data']['dynamic']['source_gridded']['nc_settings']['var_name']:'precip', data_settings['data']['dynamic']['source_gridded']['nc_settings']['lon_name']:'lon', data_settings['data']['dynamic']['source_gridded']['nc_settings']['lat_name']:'lat'})
@@ -229,10 +257,14 @@ def main():
         except (FileNotFoundError, ValueError) as err:
         # If no data available for the actual time step just copy the input
             if not data_settings['algorithm']['flags']['raise_error_if_no_station_available']:
+                if backup_griso is True:
+                    logging.error(' ----> ERROR! Both gridded and point data are not available for the time step! Skipping time step!')
+                    continue
                 logging.warning(' ----> WARNING! No valid gauge data available for time step')
                 logging.warning(' ----> Use unconditioned radar map as output')
                 sat_out = copy.deepcopy(sat)
-                sat_out.to_netcdf(file_out_time_step)
+                sat_out_value = sat_out['precip'].squeeze().values
+                write_output(sat_out_value, sat_out, format_out, file_out_time_step, gridded_in_time_step)
                 continue
             else:
                 logging.error(' ----> ERROR! No valid data available for time step')
@@ -289,95 +321,84 @@ def main():
                 os.system('gzip ' + ancillary_out_time_step)
         logging.info(' ---> GRISO: Data preprocessing...DONE')
 
-        # GRISO interpolator on satellite data
-        logging.info(' ---> GRISO: Gridded data interpolation...')
-        griso_sat = GrisoInterpola(point_data["rPluvio"], point_data["cPluvio"], point_data["grid_value"], correl_features)
-        logging.info(' ---> GRISO: Gridded data interpolation...DONE')
+        if backup_griso is False:
+            # GRISO interpolator on satellite data
+            logging.info(' ---> GRISO: Gridded data interpolation...')
+            griso_sat = GrisoInterpola(point_data["rPluvio"], point_data["cPluvio"], point_data["grid_value"], correl_features)
+            logging.info(' ---> GRISO: Gridded data interpolation...DONE')
 
-        ##  Save griso of gridded field - FOR DEBUGGING
-        if debug_mode:
-            os.makedirs(os.path.dirname(ancillary_out_time_step), exist_ok=True)
-            griso_sat_out = copy.deepcopy(sat)
-            griso_sat_out.precip.values[0, :, :] = griso_sat
-            griso_sat_out.to_netcdf(os.path.join(os.path.dirname(ancillary_out_time_step), 'griso_gridded_' + timeNow.strftime("%Y%m%d_%H%M" + '.nc')))
+            ##  Save griso of gridded field - FOR DEBUGGING
+            if debug_mode:
+                os.makedirs(os.path.dirname(ancillary_out_time_step), exist_ok=True)
+                griso_sat_out = copy.deepcopy(sat)
+                griso_sat_out.precip.values[0, :, :] = griso_sat
+                griso_sat_out.to_netcdf(os.path.join(os.path.dirname(ancillary_out_time_step), 'griso_gridded_' + timeNow.strftime("%Y%m%d_%H%M" + '.nc')))
 
-        # Modified Conditional Merging
-        logging.info(' ---> Perform Modified Conditional Merging...')
-        error_sat = np.squeeze(grid_rain) - griso_sat
+            # Modified Conditional Merging
+            logging.info(' ---> Perform Modified Conditional Merging...')
+            error_sat = np.squeeze(grid_rain) - griso_sat
 
-        conditioned_sat = griso_obs + error_sat
-        conditioned_sat[conditioned_sat < 0] = 0
-        conditioned_sat= np.where(np.isnan(conditioned_sat), griso_obs, conditioned_sat)    # where there is no radar, use griso stations
-        mcm_out = check_and_write_dataarray(conditioned_sat, sat, var_name='precip', lat_var_name='lat',
-                                  lon_var_name='lon')
-        logging.info(' ---> Perform Modified Conditional Merging...DONE')
+            conditioned_sat = griso_obs + error_sat
+            conditioned_sat[conditioned_sat < 0] = 0
+            conditioned_sat= np.where(np.isnan(conditioned_sat), griso_obs, conditioned_sat)    # where there is no radar, use griso stations
+            mcm_out = check_and_write_dataarray(conditioned_sat, sat, var_name='precip', lat_var_name='lat',
+                                      lon_var_name='lon')
+            logging.info(' ---> Perform Modified Conditional Merging...DONE')
 
-        # Plot output and save figure
-        logging.info(' ---> Make and save figure...')
-        if data_settings['algorithm']['flags']['save_figures']:
-            os.makedirs(os.path.dirname(ancillary_out_time_step), exist_ok=True)
+            # Plot output and save figure
+            logging.info(' ---> Make and save figure...')
+            if data_settings['algorithm']['flags']['save_figures']:
+                os.makedirs(os.path.dirname(ancillary_out_time_step), exist_ok=True)
 
-            fig, axs = plt.subplots(2,2)
+                fig, axs = plt.subplots(2, 2)
 
-            maxVal = np.nanmax(np.concatenate((sat["precip"].values.flatten(),griso_out["precip"].values.flatten(), conditioned_sat.flatten(), data)))
-            griso_out["precip"].plot(x="lon", y="lat", cmap='gray', ax=axs[0, 0], alpha=0.4, add_colorbar = False)
-            OB = axs[0, 0].scatter(dfStations_available.lon.astype(np.float),dfStations_available.lat.astype(np.float) ,3, c=data, vmin=0, vmax=maxVal)
-            axs[0, 0].set_title("OBS")
-            axs[0, 0].set_xlabel("")
-            axs[0 ,0].set_ylabel("")
-            plt.colorbar(OB, ax=axs[0, 0])
+                maxVal = np.nanmax(np.concatenate((sat["precip"].values.flatten(), griso_out["precip"].values.flatten(),
+                                                   conditioned_sat.flatten(), data)))
+                griso_out["precip"].plot(x="lon", y="lat", cmap='gray', ax=axs[0, 0], alpha=0.4, add_colorbar=False)
+                OB = axs[0, 0].scatter(dfStations_available.lon.astype(np.float),
+                                       dfStations_available.lat.astype(np.float), 3, c=data, vmin=0, vmax=maxVal)
+                axs[0, 0].set_title("OBS")
+                axs[0, 0].set_xlabel("")
+                axs[0, 0].set_ylabel("")
+                plt.colorbar(OB, ax=axs[0, 0])
 
-            SAT = sat["precip"].plot(x="lon", y="lat", ax=axs[0, 1], add_colorbar = False, vmin=0, vmax=maxVal)
-            axs[0, 1].set_title("SAT")
-            axs[0, 1].set_xlabel("")
-            axs[0, 1].set_ylabel("")
-            plt.colorbar(SAT, ax=axs[0, 1])
+                SAT = sat["precip"].plot(x="lon", y="lat", ax=axs[0, 1], add_colorbar=False, vmin=0, vmax=maxVal)
+                axs[0, 1].set_title("SAT")
+                axs[0, 1].set_xlabel("")
+                axs[0, 1].set_ylabel("")
+                plt.colorbar(SAT, ax=axs[0, 1])
 
-            GR = griso_out["precip"].plot(x="lon", y="lat", ax=axs[1, 0], add_colorbar = False, vmin=0, vmax=maxVal)
-            axs[1, 0].set_title("GRISO")
-            axs[1, 0].set_xlabel("")
-            axs[1, 0].set_ylabel("")
-            plt.colorbar(GR, ax=axs[1, 0])
+                GR = griso_out["precip"].plot(x="lon", y="lat", ax=axs[1, 0], add_colorbar=False, vmin=0, vmax=maxVal)
+                axs[1, 0].set_title("GRISO")
+                axs[1, 0].set_xlabel("")
+                axs[1, 0].set_ylabel("")
+                plt.colorbar(GR, ax=axs[1, 0])
 
-            MCM = mcm_out.plot(x="lon", y="lat", ax=axs[1, 1], add_colorbar = False, vmin=0, vmax=maxVal)
-            axs[1, 1].set_xlabel("")
-            axs[1, 1].set_ylabel("")
-            axs[1, 1].set_title("MCM")
-            plt.colorbar(MCM, ax=axs[1, 1])
+                MCM = mcm_out.plot(x="lon", y="lat", ax=axs[1, 1], add_colorbar=False, vmin=0, vmax=maxVal)
+                axs[1, 1].set_xlabel("")
+                axs[1, 1].set_ylabel("")
+                axs[1, 1].set_title("MCM")
+                plt.colorbar(MCM, ax=axs[1, 1])
 
-            plt.suptitle(timeNow.strftime("%Y-%m-%d %H:%M"))
-            # plt.show(block=True)
+                plt.suptitle(timeNow.strftime("%Y-%m-%d %H:%M"))
+                # plt.show(block=True)
 
-            plt.tight_layout()
-            plt.savefig(os.path.join(os.path.dirname(ancillary_out_time_step), 'figure_mcm_' + timeNow.strftime("%Y%m%d_%H%M" + '.png')))
-            plt.close()
-        logging.info(' ---> Make and save figure...DONE')
-
-        # Save output
-        logging.info(' ---> Save output map in ' + data_settings['data']['outcome'][
-            'format'].lower() + ' format')
-
-        if data_settings['data']['outcome']['format'].lower() == 'netcdf' or data_settings['data']['outcome'][
-            'format'].lower() == 'nc':
-
-            logging.info(' ---> Saving outfile in netcdf format ' + os.path.basename(file_out_time_step))
-            mcm_out.to_netcdf(file_out_time_step)
-
-        elif fnmatch.fnmatch(data_settings['data']['outcome']['format'],'*tif*'):
-            logging.info(' ---> Saving outfile in GTiff format ' + os.path.basename(file_out_time_step))
-
-            grid = xr.open_rasterio(gridded_in_time_step)
-            write_raster(conditioned_sat, grid, file_out_time_step, driver='GTiff')
-
-        elif (fnmatch.fnmatch(data_settings['data']['outcome']['format'], '*txt*')
-              or fnmatch.fnmatch(data_settings['data']['outcome']['format'], 'AAIGrid')):
-
-            grid = xr.open_rasterio(gridded_in_time_step)
-            write_raster(conditioned_sat, grid, file_out_time_step, driver='AAIGrid')
+                plt.tight_layout()
+                plt.savefig(os.path.join(os.path.dirname(ancillary_out_time_step),
+                                         'figure_mcm_' + timeNow.strftime("%Y%m%d_%H%M" + '.png')))
+                plt.close()
+            logging.info(' ---> Make and save figure...DONE')
 
         else:
-            logging.error('ERROR! Unknown or unsupported output format! ')
-            raise ValueError("Supported output formats are netcdf and GTiff")
+            logging.info(' ---> Take rainfall griso as output...')
+            conditioned_sat = griso_obs.copy()
+            mcm_out = sat_out.copy()
+
+
+        # Save output
+        logging.info(' ---> Save output map in ' + format_out + ' format')
+
+        write_output(conditioned_sat, mcm_out, format_out, file_out_time_step, gridded_in_time_step)
 
         if data_settings['algorithm']['flags']['compress_output']:
             os.system('gzip -f ' + file_out_time_step)
@@ -400,6 +421,17 @@ def main():
     logging.info(' ==> Bye, Bye')
     logging.info(' ============================================================================ ')
     # ----------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------
+# Method to write output files
+def write_output(array, dataarray, format, file_out_time_step, gridded_in_time_step):
+    if format == 'nc':
+        logging.info(' ---> Saving outfile in netcdf format ' + os.path.basename(file_out_time_step))
+        dataarray.to_netcdf(file_out_time_step)
+    else:
+        grid = xr.open_rasterio(gridded_in_time_step)
+        write_raster(array, grid, file_out_time_step, driver=format)
+# ----------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------
 # Method to read file json
