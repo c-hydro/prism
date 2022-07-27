@@ -43,14 +43,21 @@ def importDropsData(drops_settings, start_time, end_time, time_frequency):
     except:
         dds_support_aggr_time = True
 
+    if drops_settings["time_aggregation"][0].isalpha():
+        drops_settings["time_aggregation"] = 1 + drops_settings["time_aggregation"]
+
+    time_aggr_seconds = pd.Timedelta(drops_settings["time_aggregation"]).total_seconds()
+
     logging.info(' ---> Getting stations data from server')
     if dds_support_aggr_time:
         dfData = sensors.get_sensor_data(drops_settings['DropsSensor'], sensors_list_P, start_time.strftime("%Y%m%d%H%M"),
-                                     (end_time + pd.Timedelta('1H')).strftime("%Y%m%d%H%M"), aggr_time=3600, as_pandas=True)
+                                     (end_time + pd.Timedelta('1H')).strftime("%Y%m%d%H%M"), aggr_time=time_aggr_seconds, as_pandas=True)
     else:
-        dfData = sensors.get_sensor_data(drops_settings['DropsSensor'], sensors_list_P,
-                                         start_time.strftime("%Y%m%d%H%M"),
-                                         (end_time + pd.Timedelta('1H')).strftime("%Y%m%d%H%M"), as_pandas=True)
+        logging.error("ERROR! Server does not support aggregation time, the code should be modified accordingly")
+        raise NotImplementedError
+        #dfData = sensors.get_sensor_data(drops_settings['DropsSensor'], sensors_list_P,
+        #                                 start_time.strftime("%Y%m%d%H%M"),
+        #                                 (end_time + pd.Timedelta('1H')).strftime("%Y%m%d%H%M"), as_pandas=True)
 
     # columnNames = [dfStations.loc[cd]['name'] for cd in dfData.columns]
     # dfData.columns = dfData.columns[columnNames]

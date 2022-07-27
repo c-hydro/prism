@@ -14,6 +14,7 @@
       "save_griso_ancillary_maps": true,
       "save_figures": true,
       "raise_error_if_no_station_available": false,
+      "raise_error_if_no_gridded_available": false,
       "compressed_gridded_input": false,
       "compress_output": false,
       "overwrite_existing": true,
@@ -21,10 +22,10 @@
     },
     "general": {
       "title": "Modified Coonditional Merging - Radar",
-      "web-site": "",
+      "web-site": "https://github.com/c-hydro/prism",
       "source": "Python library developed by CIMA Research Foundation",
-      "history": "2.1.0 [20210602]",
-      "project-info": "Hydrological Data Engines - HyDE Library/Project",
+      "history": "2.5.3 [20220726]",
+      "project-info": "PRISM - PRecipitation Interpolation and Spatialization Models",
       "algorithm": "Data dynamic tool developed by CIMA Research Foundation"
     },
     "template": {
@@ -40,11 +41,14 @@
     }
   },
   "data": {
+    "static": {
+      "backup_grid": "/home/andrea/CIMA/DEVELOPEMENT/conditional_merging/liguria.dem.txt"
+    },
     "dynamic": {
       "time": {
         "time_observed_period": 1,
         "time_forecast_period": 0,
-        "time_frequency": "H"
+        "time_frequency": "1H"
       },
       "source_gridded": {
         "filename": "RADAR_{source_gridded_datetime}00.tif",
