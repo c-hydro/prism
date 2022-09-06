@@ -47,6 +47,7 @@ import time
 import matplotlib.pyplot as plt
 import fnmatch
 import netrc
+import rasterio as rio
 
 from prism.libs.griso.libs_model_griso_exec import GrisoCorrel, GrisoInterpola, GrisoPreproc
 from prism.libs.griso.libs_model_griso_io import importDropsData, importTimeSeries, check_and_write_dataarray, write_raster, read_file_tiff, read_point_data
@@ -105,11 +106,6 @@ def main():
     if len([x for x in computation_settings if x]) > 1 or len([x for x in computation_settings if x]) == 0:
         logging.error(' ----> ERROR! Please choose if use fixed or dynamic correlation!')
         raise ValueError("Correlation type settings are mutually exclusive!")
-
-    if data_settings['algorithm']['flags']["mcm"]['fixed_correlation']:
-        corr_type = 'fixed'
-    else:
-        corr_type = 'dynamic'
 
     logging.info(' --> Griso correlation type: ' + corr_type)
 
@@ -177,7 +173,15 @@ def main():
     # Loop across time steps
     for timeNow in pd.date_range(start=startRun, end=endRun, closed='right', freq=data_settings['data']['dynamic']['time']['time_frequency']):
         logging.info(' ---> Computing time step ' + timeNow.strftime("%Y-%m-%d %H:%M:00"))
+
+        # Reset settigns for missing data
         backup_griso = False
+        missing_radar = False
+
+        if data_settings['algorithm']['flags']["mcm"]['fixed_correlation']:
+            corr_type = 'fixed'
+        else:
+            corr_type = 'dynamic'
 
         # Compute time step file names
         file_out_time_step = os.path.join(data_settings['data']['outcome']['folder'], data_settings['data']['outcome']['filename'])
@@ -225,11 +229,13 @@ def main():
             else:
                 logging.error(" ---> ERROR! Only netcdf or tif inputs are supported for grid files")
                 raise NotImplementedError("Please, choose 'netcdf' or 'tif' in the setting file!")
-        except FileNotFoundError:
+        except (FileNotFoundError, rio.rasterio.errors.RasterioIOError) as e:
+            missing_radar = True
             if not data_settings['algorithm']['flags']['raise_error_if_no_gridded_available']:
                 sat = read_file_tiff(data_settings['data']['static']['backup_grid'], var_name='precip', time=[timeNow], \
                                      coord_name_x='lon', coord_name_y='lat', dim_name_y='lat', dim_name_x='lon')
                 backup_griso = True
+                gridded_in_time_step = data_settings['data']['static']['backup_grid']
                 logging.error('----> WARNING! File ' + os.path.basename(gridded_in_time_step) + ' not found! Backup on griso only!')
             else:
                 logging.error('----> ERROR! File ' + os.path.basename(gridded_in_time_step) + ' not found!')
@@ -257,7 +263,7 @@ def main():
         except (FileNotFoundError, ValueError) as err:
         # If no data available for the actual time step just copy the input
             if not data_settings['algorithm']['flags']['raise_error_if_no_station_available']:
-                if backup_griso is True:
+                if missing_radar is True:
                     logging.error(' ----> ERROR! Both gridded and point data are not available for the time step! Skipping time step!')
                     continue
                 logging.warning(' ----> WARNING! No valid gauge data available for time step')
@@ -299,6 +305,8 @@ def main():
 
         # Calculate GRISO correlation features
         logging.info(' ---> GRISO: Calculate correlation...')
+        if missing_radar is True:
+            corr_type = 'fixed'
         correl_features = GrisoCorrel(point_data["rPluvio"], point_data["cPluvio"], corrFin, grid_rain, passoKm, a2dPosizioni, point_data["gauge_value"], corr_type= corr_type)
         logging.info(' ---> GRISO: Data preprocessing...DONE')
 
@@ -321,7 +329,7 @@ def main():
                 os.system('gzip ' + ancillary_out_time_step)
         logging.info(' ---> GRISO: Data preprocessing...DONE')
 
-        if backup_griso is False:
+        if missing_radar is False:
             # GRISO interpolator on satellite data
             logging.info(' ---> GRISO: Gridded data interpolation...')
             griso_sat = GrisoInterpola(point_data["rPluvio"], point_data["cPluvio"], point_data["grid_value"], correl_features)
@@ -389,11 +397,13 @@ def main():
                 plt.close()
             logging.info(' ---> Make and save figure...DONE')
 
-        else:
+        elif backup_griso is True:
             logging.info(' ---> Take rainfall griso as output...')
             conditioned_sat = griso_obs.copy()
             mcm_out = sat_out.copy()
 
+        else:
+            raise NotImplementedError("Backup griso is not active, this condition should not subsist!")
 
         # Save output
         logging.info(' ---> Save output map in ' + format_out + ' format')
