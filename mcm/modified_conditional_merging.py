@@ -49,6 +49,7 @@ import fnmatch
 import netrc
 import rasterio as rio
 
+
 from prism.libs.griso.libs_model_griso_exec import GrisoCorrel, GrisoInterpola, GrisoPreproc
 from prism.libs.griso.libs_model_griso_io import importDropsData, importTimeSeries, check_and_write_dataarray, write_raster, read_file_tiff, read_point_data
 # -------------------------------------------------------------------------------------
@@ -106,6 +107,12 @@ def main():
     if len([x for x in computation_settings if x]) > 1 or len([x for x in computation_settings if x]) == 0:
         logging.error(' ----> ERROR! Please choose if use fixed or dynamic correlation!')
         raise ValueError("Correlation type settings are mutually exclusive!")
+
+
+    if data_settings['algorithm']['flags']["mcm"]['fixed_correlation']:
+        corr_type = 'fixed'
+    else:
+        corr_type = 'dynamic'
 
     logging.info(' --> Griso correlation type: ' + corr_type)
 
@@ -229,6 +236,7 @@ def main():
             else:
                 logging.error(" ---> ERROR! Only netcdf or tif inputs are supported for grid files")
                 raise NotImplementedError("Please, choose 'netcdf' or 'tif' in the setting file!")
+
         except (FileNotFoundError, rio.rasterio.errors.RasterioIOError) as e:
             missing_radar = True
             if not data_settings['algorithm']['flags']['raise_error_if_no_gridded_available']:
@@ -263,6 +271,7 @@ def main():
         except (FileNotFoundError, ValueError) as err:
         # If no data available for the actual time step just copy the input
             if not data_settings['algorithm']['flags']['raise_error_if_no_station_available']:
+
                 if missing_radar is True:
                     logging.error(' ----> ERROR! Both gridded and point data are not available for the time step! Skipping time step!')
                     continue
@@ -328,6 +337,7 @@ def main():
             if data_settings['algorithm']['flags']['compress_output']:
                 os.system('gzip ' + ancillary_out_time_step)
         logging.info(' ---> GRISO: Data preprocessing...DONE')
+
 
         if missing_radar is False:
             # GRISO interpolator on satellite data
@@ -397,13 +407,14 @@ def main():
                 plt.close()
             logging.info(' ---> Make and save figure...DONE')
 
+
         elif backup_griso is True:
             logging.info(' ---> Take rainfall griso as output...')
             conditioned_sat = griso_obs.copy()
             mcm_out = sat_out.copy()
-
         else:
             raise NotImplementedError("Backup griso is not active, this condition should not subsist!")
+
 
         # Save output
         logging.info(' ---> Save output map in ' + format_out + ' format')
