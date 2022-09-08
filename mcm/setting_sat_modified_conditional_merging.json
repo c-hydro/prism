@@ -11,6 +11,7 @@
         "fixed_correlation": false,
         "dynamic_correlation": true
       },
+      "perform_griso_only": false,
       "save_griso_ancillary_maps": true,
       "save_figures": true,
       "raise_error_if_no_station_available": false,

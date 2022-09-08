@@ -85,6 +85,10 @@ def main():
     endRun = dateRun + data_settings['data']['dynamic']['time']['time_forecast_period'] * pd.Timedelta(
         data_settings['data']['dynamic']['time']['time_frequency'])
 
+    try:
+        griso_only = data_settings['algorithm']['flags']['perform_griso_only']
+    except:
+        griso_only = False
     # -------------------------------------------------------------------------------------
 
     # -------------------------------------------------------------------------------------
@@ -107,14 +111,6 @@ def main():
     if len([x for x in computation_settings if x]) > 1 or len([x for x in computation_settings if x]) == 0:
         logging.error(' ----> ERROR! Please choose if use fixed or dynamic correlation!')
         raise ValueError("Correlation type settings are mutually exclusive!")
-
-
-    if data_settings['algorithm']['flags']["mcm"]['fixed_correlation']:
-        corr_type = 'fixed'
-    else:
-        corr_type = 'dynamic'
-
-    logging.info(' --> Griso correlation type: ' + corr_type)
 
     # Gauge data sources
     computation_settings = [data_settings['algorithm']['flags']["sources"]['use_timeseries'], data_settings['algorithm']['flags']["sources"]['use_drops2'], data_settings['algorithm']['flags']["sources"]['use_point_data']]
@@ -182,8 +178,12 @@ def main():
         logging.info(' ---> Computing time step ' + timeNow.strftime("%Y-%m-%d %H:%M:00"))
 
         # Reset settigns for missing data
-        backup_griso = False
-        missing_radar = False
+        if griso_only:
+            backup_griso = True
+            missing_radar = True
+        else:
+            backup_griso = False
+            missing_radar = False
 
         if data_settings['algorithm']['flags']["mcm"]['fixed_correlation']:
             corr_type = 'fixed'
@@ -213,6 +213,43 @@ def main():
         os.makedirs(os.path.dirname(file_out_time_step), exist_ok=True)
 
         # Import gridded source
+
+        if not griso_only:
+            logging.info(' ----> Importing gridded source')
+            try:
+                if data_settings['algorithm']['flags']['compressed_gridded_input']:
+                    os.system('gunzip ' + gridded_in_time_step + '.gz')
+                if data_settings['data']['dynamic']['source_gridded']['file_type'] == "netcdf" or data_settings['data']['dynamic']['source_gridded']['file_type'] == "nc":
+                    logging.info(' ---> Grids in netcdf format')
+                    data_settings['data']['dynamic']['source_gridded']['file_type'] = "netcdf"
+                    sat = xr.open_dataset(gridded_in_time_step, decode_times=False)
+                    sat = sat.rename(
+                        {data_settings['data']['dynamic']['source_gridded']['nc_settings']['var_name']: 'precip',
+                         data_settings['data']['dynamic']['source_gridded']['nc_settings']['lon_name']: 'lon',
+                         data_settings['data']['dynamic']['source_gridded']['nc_settings']['lat_name']: 'lat'})
+                elif (fnmatch.fnmatch(data_settings['data']['dynamic']['source_gridded']['file_type'],'*tif*')
+                      or fnmatch.fnmatch(data_settings['data']['dynamic']['source_gridded']['file_type'],'*txt*')
+                      or fnmatch.fnmatch(data_settings['data']['dynamic']['source_gridded']['file_type'],'AAIGrid')):
+                    logging.info(' ---> Grids in tif format')
+                    data_settings['data']['dynamic']['source_gridded']['file_type'] = "tif"
+                    sat = read_file_tiff(gridded_in_time_step, var_name= 'precip', time=[timeNow],\
+                                         coord_name_x='lon', coord_name_y='lat', dim_name_y='lat', dim_name_x='lon')
+                    sat['precip'] = sat.where(sat['precip']>=0)['precip']
+                else:
+                    logging.error(" ---> ERROR! Only netcdf or tif inputs are supported for grid files")
+                    raise NotImplementedError("Please, choose 'netcdf' or 'tif' in the setting file!")
+            except (FileNotFoundError, rio.rasterio.errors.RasterioIOError) as e:
+                missing_radar = True
+                if not data_settings['algorithm']['flags']['raise_error_if_no_gridded_available']:
+                    sat = read_file_tiff(data_settings['data']['static']['backup_grid'], var_name='precip', time=[timeNow], \
+                                         coord_name_x='lon', coord_name_y='lat', dim_name_y='lat', dim_name_x='lon')
+                    backup_griso = True
+                    gridded_in_time_step = data_settings['data']['static']['backup_grid']
+                    logging.error('----> WARNING! File ' + os.path.basename(gridded_in_time_step) + ' not found! Backup on griso only!')
+                else:
+                    logging.error('----> ERROR! File ' + os.path.basename(gridded_in_time_step) + ' not found!')
+                    raise FileNotFoundError
+                    
         logging.info(' ----> Importing gridded source')
         try:
             if data_settings['algorithm']['flags']['compressed_gridded_input']:
@@ -249,9 +286,15 @@ def main():
                 logging.error('----> ERROR! File ' + os.path.basename(gridded_in_time_step) + ' not found!')
                 raise FileNotFoundError
 
-        if data_settings['data']['dynamic']['source_gridded']['file_type'] == "netcdf":
-            sat = sat.rename({data_settings['data']['dynamic']['source_gridded']['nc_settings']['var_name']:'precip', data_settings['data']['dynamic']['source_gridded']['nc_settings']['lon_name']:'lon', data_settings['data']['dynamic']['source_gridded']['nc_settings']['lat_name']:'lat'})
+            if data_settings['data']['dynamic']['source_gridded']['file_type'] == "netcdf":
+                sat = sat.rename({data_settings['data']['dynamic']['source_gridded']['nc_settings']['var_name']:'precip', data_settings['data']['dynamic']['source_gridded']['nc_settings']['lon_name']:'lon', data_settings['data']['dynamic']['source_gridded']['nc_settings']['lat_name']:'lat'})
+        else:
+            sat = read_file_tiff(data_settings['data']['static']['backup_grid'], var_name='precip', time=[timeNow], \
+                                 coord_name_x='lon', coord_name_y='lat', dim_name_y='lat', dim_name_x='lon')
+            backup_griso = True
+            gridded_in_time_step = data_settings['data']['static']['backup_grid']
 
+        sat_out = copy.deepcopy(sat)
         # Import point gauge data for point_data setup
         try:
             if data_settings['algorithm']['flags']["sources"]['use_point_data']:
@@ -277,7 +320,6 @@ def main():
                     continue
                 logging.warning(' ----> WARNING! No valid gauge data available for time step')
                 logging.warning(' ----> Use unconditioned radar map as output')
-                sat_out = copy.deepcopy(sat)
                 sat_out_value = sat_out['precip'].squeeze().values
                 write_output(sat_out_value, sat_out, format_out, file_out_time_step, gridded_in_time_step)
                 continue
