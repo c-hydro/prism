@@ -1,7 +1,7 @@
 """
 prism - Modified Conditional Merging with GRISO
-__date__ = '20220726'
-__version__ = '2.5.3'
+__date__ = '20221103'
+__version__ = '2.5.4'
 __author__ =
         'Flavio Pignone (flavio.pignone@cimafoundation.org',
         'Andrea Libertino (andrea.libertino@cimafoundation.org',
@@ -10,6 +10,7 @@ __library__ = 'prism'
 General command line:
 ### python hyde_data_dynamic_modified_conditional_merging.py -settings_file "settings.json" -time "YYYY-MM-DD HH:MM"
 Version(s):
+20221103 (2.5.4) --> Fixed bug for backup griso
 20220726 (2.5.3) --> Added griso backup if gridded data not available
                      Fixed bug for sub-hourly drops2 aggregation
 20220704 (2.5.2) --> Added support to sub-hourly merging
@@ -58,8 +59,8 @@ def main():
     # -------------------------------------------------------------------------------------
     # Version and algorithm information
     alg_name = 'prism - Modified Conditional Merging '
-    alg_version = '2.5.3'
-    alg_release = '2022-07-26'
+    alg_version = '2.5.4'
+    alg_release = '2022-11-03'
     # -------------------------------------------------------------------------------------
 
     # -------------------------------------------------------------------------------------
@@ -242,8 +243,8 @@ def main():
                     sat = read_file_tiff(data_settings['data']['static']['backup_grid'], var_name='precip', time=[timeNow], \
                                          coord_name_x='lon', coord_name_y='lat', dim_name_y='lat', dim_name_x='lon')
                     backup_griso = True
-                    gridded_in_time_step = data_settings['data']['static']['backup_grid']
                     logging.error('----> WARNING! File ' + os.path.basename(gridded_in_time_step) + ' not found! Backup on griso only!')
+                    gridded_in_time_step = data_settings['data']['static']['backup_grid']
                 else:
                     logging.error('----> ERROR! File ' + os.path.basename(gridded_in_time_step) + ' not found!')
                     raise FileNotFoundError
@@ -409,13 +410,13 @@ def main():
                 plt.close()
             logging.info(' ---> Make and save figure...DONE')
 
-        elif backup_griso is True:
-            logging.info(' ---> Take rainfall griso as output...')
-            conditioned_sat = griso_obs.copy()
-            mcm_out = sat_out.copy()
-
         else:
-            raise NotImplementedError("Backup griso is not active, this condition should not subsist!")
+            if backup_griso is True:
+                logging.info(' ---> Take rainfall griso as output...')
+                conditioned_sat = griso_obs.copy()
+                mcm_out = griso_out.copy()
+            else:
+                raise NotImplementedError("Backup griso is not active, this condition should not subsist!")
 
         # Save output
         logging.info(' ---> Save output map in ' + format_out + ' format')
@@ -429,7 +430,6 @@ def main():
 
         if data_settings['algorithm']['flags']['compressed_gridded_input']:
             os.system('gzip ' + gridded_in_time_step)
-
     # ----------------------------------------------------------------------------
 
     # ----------------------------------------------------------------------------
