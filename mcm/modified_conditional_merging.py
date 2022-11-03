@@ -50,6 +50,7 @@ import fnmatch
 import netrc
 import rasterio as rio
 
+
 from prism.libs.griso.libs_model_griso_exec import GrisoCorrel, GrisoInterpola, GrisoPreproc
 from prism.libs.griso.libs_model_griso_io import importDropsData, importTimeSeries, check_and_write_dataarray, write_raster, read_file_tiff, read_point_data
 # -------------------------------------------------------------------------------------
@@ -213,6 +214,7 @@ def main():
         os.makedirs(os.path.dirname(file_out_time_step), exist_ok=True)
 
         # Import gridded source
+
         if not griso_only:
             logging.info(' ----> Importing gridded source')
             try:
@@ -248,6 +250,42 @@ def main():
                 else:
                     logging.error('----> ERROR! File ' + os.path.basename(gridded_in_time_step) + ' not found!')
                     raise FileNotFoundError
+                    
+        logging.info(' ----> Importing gridded source')
+        try:
+            if data_settings['algorithm']['flags']['compressed_gridded_input']:
+                os.system('gunzip ' + gridded_in_time_step + '.gz')
+            if data_settings['data']['dynamic']['source_gridded']['file_type'] == "netcdf" or data_settings['data']['dynamic']['source_gridded']['file_type'] == "nc":
+                logging.info(' ---> Grids in netcdf format')
+                data_settings['data']['dynamic']['source_gridded']['file_type'] = "netcdf"
+                sat = xr.open_dataset(gridded_in_time_step, decode_times=False)
+                sat = sat.rename(
+                    {data_settings['data']['dynamic']['source_gridded']['nc_settings']['var_name']: 'precip',
+                     data_settings['data']['dynamic']['source_gridded']['nc_settings']['lon_name']: 'lon',
+                     data_settings['data']['dynamic']['source_gridded']['nc_settings']['lat_name']: 'lat'})
+            elif (fnmatch.fnmatch(data_settings['data']['dynamic']['source_gridded']['file_type'],'*tif*')
+                  or fnmatch.fnmatch(data_settings['data']['dynamic']['source_gridded']['file_type'],'*txt*')
+                  or fnmatch.fnmatch(data_settings['data']['dynamic']['source_gridded']['file_type'],'AAIGrid')):
+                logging.info(' ---> Grids in tif format')
+                data_settings['data']['dynamic']['source_gridded']['file_type'] = "tif"
+                sat = read_file_tiff(gridded_in_time_step, var_name= 'precip', time=[timeNow],\
+                                     coord_name_x='lon', coord_name_y='lat', dim_name_y='lat', dim_name_x='lon')
+                sat['precip'] = sat.where(sat['precip']>=0)['precip']
+            else:
+                logging.error(" ---> ERROR! Only netcdf or tif inputs are supported for grid files")
+                raise NotImplementedError("Please, choose 'netcdf' or 'tif' in the setting file!")
+
+        except (FileNotFoundError, rio.rasterio.errors.RasterioIOError) as e:
+            missing_radar = True
+            if not data_settings['algorithm']['flags']['raise_error_if_no_gridded_available']:
+                sat = read_file_tiff(data_settings['data']['static']['backup_grid'], var_name='precip', time=[timeNow], \
+                                     coord_name_x='lon', coord_name_y='lat', dim_name_y='lat', dim_name_x='lon')
+                backup_griso = True
+                gridded_in_time_step = data_settings['data']['static']['backup_grid']
+                logging.error('----> WARNING! File ' + os.path.basename(gridded_in_time_step) + ' not found! Backup on griso only!')
+            else:
+                logging.error('----> ERROR! File ' + os.path.basename(gridded_in_time_step) + ' not found!')
+                raise FileNotFoundError
 
             if data_settings['data']['dynamic']['source_gridded']['file_type'] == "netcdf":
                 sat = sat.rename({data_settings['data']['dynamic']['source_gridded']['nc_settings']['var_name']:'precip', data_settings['data']['dynamic']['source_gridded']['nc_settings']['lon_name']:'lon', data_settings['data']['dynamic']['source_gridded']['nc_settings']['lat_name']:'lat'})
@@ -277,6 +315,7 @@ def main():
         except (FileNotFoundError, ValueError) as err:
         # If no data available for the actual time step just copy the input
             if not data_settings['algorithm']['flags']['raise_error_if_no_station_available']:
+
                 if missing_radar is True:
                     logging.error(' ----> ERROR! Both gridded and point data are not available for the time step! Skipping time step!')
                     continue
@@ -341,6 +380,7 @@ def main():
             if data_settings['algorithm']['flags']['compress_output']:
                 os.system('gzip ' + ancillary_out_time_step)
         logging.info(' ---> GRISO: Data preprocessing...DONE')
+
 
         if missing_radar is False:
             # GRISO interpolator on satellite data
@@ -417,6 +457,7 @@ def main():
                 mcm_out = griso_out.copy()
             else:
                 raise NotImplementedError("Backup griso is not active, this condition should not subsist!")
+
 
         # Save output
         logging.info(' ---> Save output map in ' + format_out + ' format')
