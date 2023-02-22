@@ -118,7 +118,7 @@ def GrisoCorrel(row_gauge, col_gauge, corrFin, rs_field, cellsize_km, gauge_posi
     dist_km = dist_cells * cellsize_km
     bins_dist_km = np.round(dist_km, 4)
 
-    if corr_type is not 'fixed':
+    if corr_type != 'fixed':
         # calculate map of maximum number of pair for each cell of the GRISO window
         mask_window = np.where(bins_dist_km <= corrFin / 2, 1, 0)
         gauge_pairs_map_window = np.zeros_like(mask_window, dtype=np.int)
@@ -129,7 +129,7 @@ def GrisoCorrel(row_gauge, col_gauge, corrFin, rs_field, cellsize_km, gauge_posi
             r[r>corrFin/2] = np.nan
             gauge_pairs_map_window += np.where(r>0,1,0)
 
-    rs_field_ext = np.pad(np.squeeze(rs_field), corr_max_radius_cells, 'constant', constant_values=np.nan)
+    rs_field_ext = np.pad(np.squeeze(rs_field.astype(np.float)), corr_max_radius_cells, 'constant', constant_values=np.nan)
     gauge_position_map_ext = np.pad(gauge_position_map, corr_max_radius_cells, 'constant', constant_values=0)
     row_gauge_ext = row_gauge + corr_max_radius_cells
     col_gauge_ext = col_gauge + corr_max_radius_cells
@@ -198,7 +198,7 @@ def GrisoLocalKernel(ind, dict_griso_settings, dict_correlation_outcomes):
     C = df_gauge_ext.loc[ind]["col"]
     gauge_rain = df_gauge_ext.loc[ind]["value"]
 
-    if dict_griso_settings["corr_type"] is 'fixed':
+    if dict_griso_settings["corr_type"] == 'fixed':
         corr_fit_window = corr_max_fit_window
         radius_fit = dict_griso_settings["corr_max_radius_km"]
     else:
