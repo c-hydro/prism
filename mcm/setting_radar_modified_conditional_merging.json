@@ -2,7 +2,8 @@
   "algorithm": {
     "flags": {
       "sources": {
-        "use_drops2": true,
+        "use_webdrops": true,
+        "use_drops2": false,
         "use_timeseries": false,
         "use_point_data": false,
         "non_standard_tab_fields": true
@@ -62,12 +63,22 @@
         }
       },
       "source_stations": {
+        "webdrops": {
+          "DropsAddress": "https://webdrops.cimafoundation.org/app",
+          "auth_wk_url": "https://testauth.cimafoundation.org/auth/realms/webdrops/.well-known/openid-configuration",
+          "DropsUser": null,
+          "DropsPwd": null,
+          "DropsSensor": "PLUVIOMETRO",
+          "DropsGroup": "ComuneLive%Mozambico",
+          "AcrowebRole": "mozambico",
+          "time_aggregation_sec": 3600
+        },
         "drops2": {
           "DropsAddress": "http://dds.cimafoundation.org/dds/rest",
           "DropsUser": null,
           "DropsPwd": null,
           "DropsSensor": "PLUVIOMETRO",
-          "DropsGroup": "Dewetra%Default",
+          "DropsGroup": "ComuneLive%Mozambico",
           "lon_left": 5.61,
           "lon_right": 19,
           "lat_top": 47.56,
