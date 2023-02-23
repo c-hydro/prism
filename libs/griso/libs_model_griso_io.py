@@ -4,8 +4,9 @@ Library Features:
 Name:          libs_model_griso_generic
 Author(s):     Andrea Libertino (andrea.libertino@cimafoundation.org)
                Flavio Pignone (flavio.pignone@cimafoundation.org)
-Date:          '20211026'
-Version:       '2.0.0'
+               Fabio Pintus (fabio.pintus@cimafoundation.org)
+Date:          '20230223'
+Version:       '2.0.1'
 """
 # -------------------------------------------------------------------------------------
 import logging
@@ -14,6 +15,150 @@ import numpy as np
 import os
 import xarray as xr
 import rasterio as rio
+import json
+import requests
+import json
+import requests
+import datetime
+# -------------------------------------------------------------------------------------
+
+# -------------------------------------------------------------------------------------
+# Class for manage WebDrops authentication
+class OIDC:
+
+    def __init__(self, **configuration):
+        self._token_endpoint = configuration['token_endpoint']
+        self._token_introspection_endpoint = \
+                configuration['token_introspection_endpoint']
+        self._end_session_endpoint = configuration['end_session_endpoint']
+        self._userinfo_endpoint = configuration['userinfo_endpoint']
+
+    @classmethod
+    def configure(cls, well_known_url):
+        response = requests.get(well_known_url)
+        if response.status_code != 200:
+            raise Exception('Error from well known url')
+        configuration = response.json()
+        return cls(**configuration)
+
+    def token(self, client_id, username, password):
+        params = {
+            'grant_type': 'password',
+            'client_id': client_id,
+            'username': username,
+            'password': password,
+        }
+        response = requests.post(self._token_endpoint, data=params)
+        if response.status_code != 200:
+            print(response.status_code)
+            print(response.content)
+            raise Exception('Invalid token request')
+        return response.json()
+
+    def userinfo(self, access_token):
+        headers = {
+            'Authorization': 'Bearer %s'%access_token,
+            }
+        response = requests.get(self._userinfo_endpoint, headers=headers)
+        if response.status_code != 200:
+            print(response.content)
+            raise Exception('Invalid userinfo request')
+        return response.json()
+
+    def introspect(self, client_id, client_secret, token):
+        params = {
+            'client_id': client_id,
+            'client_secret': client_secret,
+            'token': token,
+        }
+        response = requests.post(
+                self._token_introspection_endpoint, data=params)
+        if response.status_code != 200:
+            raise Exception('Invalid introspection request: %s --> %s'%(response.status_code, response.content))
+        return response.json()
+
+    def refresh(self, client_id, refresh_token):
+        params = {
+            'grant_type': 'refresh_token',
+            'client_id': client_id,
+            'refresh_token': refresh_token,
+        }
+        response = requests.post(self._token_endpoint, data=params)
+        if response.status_code != 200:
+            raise Exception('Invalid refresh request')
+        return response.json()
+
+    def end_session(self, client_id, refresh_token):
+        params = {
+            'client_id': client_id,
+            'refresh_token': refresh_token,
+        }
+        response = requests.post(self._end_session_endpoint, data=params)
+        if response.status_code != 204:
+            raise Exception('Invalid end session request')
+# -------------------------------------------------------------------------------------
+
+# -------------------------------------------------------------------------------------
+# download data from webdrops
+def importWebDropsData(webdrops_settings, start_time, end_time, time_frequency):
+
+    logging.info(" ---> Set up WebDrops connection...")
+    oidc = OIDC.configure(webdrops_settings["auth_wk_url"])
+    auth_r = oidc.token('webdrops', webdrops_settings["DropsUser"], webdrops_settings["DropsPwd"])
+    token = auth_r['access_token']
+    logging.info(" ---> Set up WebDrops connection...DONE")
+    #logging.info(" --->" + token)
+
+    logging.info(" ---> Query sensor list...")
+    sensors_list_P = requests.get(
+        f'{webdrops_settings["DropsAddress"]}/sensors/list/' + webdrops_settings["DropsSensor"] + '/?stationgroup=' + webdrops_settings["DropsGroup"],
+        headers={
+            'Authorization': f'Bearer {token}',
+            'AcrowebRole': webdrops_settings["AcrowebRole"],
+        }).json()
+    try:
+        dfStations = pd.DataFrame(np.array([(p["name"], p["lat"], p["lng"]) for p in sensors_list_P]),
+                     index=np.array([(p["id"]) for p in sensors_list_P]), columns=['name', 'lat', 'lon'])
+    except:
+        if len(sensors_list_P.list)==0:
+            dfStations = pd.DataFrame()
+            logging.warning(" ---> No stations available in the selected window!")
+
+    logging.info(" ---> Query for data...")
+    data = requests.get(
+        f'{webdrops_settings["DropsAddress"]}/sensors/data/'
+        + webdrops_settings["DropsSensor"] +
+        '/' + webdrops_settings["DropsGroup"] +
+        '/?from=' + start_time.strftime("%Y%m%d%H%M") +
+        '&to=' + (end_time + pd.Timedelta('1H')).strftime("%Y%m%d%H%M") +
+        '&aggr=' + str(webdrops_settings["time_aggregation_sec"]) + '&date_as_string=true',
+        headers={
+            'Authorization': f'Bearer {token}',
+            'AcrowebRole': webdrops_settings["AcrowebRole"],
+        }).json()
+
+    if len(data)>0:
+        columns = [i["sensorId"] for i in data]
+        dates = [datetime.datetime.strptime(i, "%Y%m%d%H%M") for i in data[0]["timeline"]]
+        dfData = pd.DataFrame(index=dates, columns=columns)
+        for id,station in enumerate(columns):
+            dfData.loc[:,station]=data[id]["values"]
+    else:
+        dfData = pd.DataFrame()
+        logging.warning(" ---> No stations and data available in the selected window!")
+
+    logging.info(' ---> Checking for empty or not-valid series')
+    # Check empty stations
+    dfData.values[dfData.values < 0] = np.nan
+    dfData = dfData.dropna(axis='columns', how='all')
+    logging.info(" ---> Found " + str(len(dfData.columns)) + " stations!")
+    logging.info(' ---> Removed ' + str(len(dfStations.index) - len(dfData.columns)) + ' for only non-valid data')
+    dfStations = dfStations.loc[dfStations.index.isin(dfData.columns.values)]
+
+    dfData = dfData.dropna(axis='rows', how='all')
+
+    return dfData, dfStations
+# -------------------------------------------------------------------------------------
 
 # -------------------------------------------------------------------------------------
 # download data from drops2

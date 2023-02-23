@@ -1,7 +1,7 @@
 """
 prism - Modified Conditional Merging with GRISO
-__date__ = '20221103'
-__version__ = '2.5.4'
+__date__ = '20230223'
+__version__ = '2.5.5'
 __author__ =
         'Flavio Pignone (flavio.pignone@cimafoundation.org',
         'Andrea Libertino (andrea.libertino@cimafoundation.org',
@@ -10,6 +10,7 @@ __library__ = 'prism'
 General command line:
 ### python hyde_data_dynamic_modified_conditional_merging.py -settings_file "settings.json" -time "YYYY-MM-DD HH:MM"
 Version(s):
+20230223 (2.5.5) --> Added support for WebDrops data download
 20221103 (2.5.4) --> Fixed bug for backup griso
 20220726 (2.5.3) --> Added griso backup if gridded data not available
                      Fixed bug for sub-hourly drops2 aggregation
@@ -52,7 +53,7 @@ import rasterio as rio
 
 
 from prism.libs.griso.libs_model_griso_exec import GrisoCorrel, GrisoInterpola, GrisoPreproc
-from prism.libs.griso.libs_model_griso_io import importDropsData, importTimeSeries, check_and_write_dataarray, write_raster, read_file_tiff, read_point_data
+from prism.libs.griso.libs_model_griso_io import importDropsData, importWebDropsData, importTimeSeries, check_and_write_dataarray, write_raster, read_file_tiff, read_point_data
 # -------------------------------------------------------------------------------------
 # Script Main
 def main():
@@ -60,8 +61,8 @@ def main():
     # -------------------------------------------------------------------------------------
     # Version and algorithm information
     alg_name = 'prism - Modified Conditional Merging '
-    alg_version = '2.5.4'
-    alg_release = '2022-11-03'
+    alg_version = '2.5.5'
+    alg_release = '2023-02-23'
     # -------------------------------------------------------------------------------------
 
     # -------------------------------------------------------------------------------------
@@ -114,9 +115,12 @@ def main():
         raise ValueError("Correlation type settings are mutually exclusive!")
 
     # Gauge data sources
-    computation_settings = [data_settings['algorithm']['flags']["sources"]['use_timeseries'], data_settings['algorithm']['flags']["sources"]['use_drops2'], data_settings['algorithm']['flags']["sources"]['use_point_data']]
+    if not 'use_webdrops' in data_settings['algorithm']['flags']["sources"]:
+        data_settings['algorithm']['flags']["sources"]['use_webdrops'] = False                  # Check for retrocompatibility
+        logging.warning(' ----> Setting for WebDrops not found in the settings file. WebDrops can not be used!')
+    computation_settings = [data_settings['algorithm']['flags']["sources"]['use_timeseries'], data_settings['algorithm']['flags']["sources"]['use_webdrops'], data_settings['algorithm']['flags']["sources"]['use_drops2'], data_settings['algorithm']['flags']["sources"]['use_point_data']]
     if len([x for x in computation_settings if x]) > 1 or len([x for x in computation_settings if x]) == 0:
-        logging.error(' ----> ERROR! Please choose if use local data or download stations trough drops2!')
+        logging.error(' ----> ERROR! Please choose if use local data or download stations trough drops2 or webdrops!')
         raise ValueError("Data sources flags are mutually exclusive!")
 
     # Output format
@@ -166,6 +170,22 @@ def main():
                     'Verify that your .netrc file exists in the home directory and that it includes proper credentials!')
         drops_settings["time_aggregation"] = data_settings['data']['dynamic']['time']['time_frequency']
         dfData, dfStations = importDropsData(drops_settings=drops_settings, start_time=dateRun - timedelta(hours=data_settings['data']['dynamic']['time']['time_observed_period']), end_time=dateRun, time_frequency= data_settings['data']['dynamic']['time']['time_frequency'])
+    elif data_settings['algorithm']['flags']["sources"]['use_webdrops']:
+        logging.info(' --> Station data source: webdrops database')
+        drops_settings = data_settings['data']['dynamic']['source_stations']['webdrops']
+        if not all([drops_settings['DropsUser'], drops_settings['DropsPwd']]):
+            netrc_handle = netrc.netrc()
+            try:
+                drops_settings['DropsUser'], _, drops_settings['DropsPwd'] = netrc_handle.authenticators(drops_settings['DropsAddress'])
+            except:
+                logging.error(
+                    ' --> Valid netrc authentication file not found in home directory! Generate it or provide user and password in the settings!')
+                raise FileNotFoundError('Verify that your .netrc file exists in the home directory and that it includes proper credentials!')
+        drops_settings["time_aggregation"] = data_settings['data']['dynamic']['time']['time_frequency']
+        dfData, dfStations = importWebDropsData(webdrops_settings=drops_settings, start_time=dateRun - timedelta(
+            hours=data_settings['data']['dynamic']['time']['time_observed_period']), end_time=dateRun,
+                                             time_frequency=data_settings['data']['dynamic']['time']['time_frequency'])
+
     elif data_settings['algorithm']['flags']["sources"]['use_timeseries']:
         logging.info(' --> Station data source: station time series')
         dfData, dfStations = importTimeSeries(timeseries_settings=data_settings['data']['dynamic']['source_stations']['time_series'], start_time=startRun, end_time=dateRun, time_frequency= data_settings['data']['dynamic']['time']['time_frequency'])
