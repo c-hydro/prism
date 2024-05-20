@@ -29,7 +29,7 @@ import time
 import fnmatch
 import netrc
 
-from prism.libs import libs_idw
+from prism.libs import libs_model_idw_exec as libs_idw
 from prism.libs.libs_generic_io import importDropsData, importWebDropsData, importTimeSeries, write_raster, read_file_tiff, read_point_data
 # -------------------------------------------------------------------------------------
 # Script Main

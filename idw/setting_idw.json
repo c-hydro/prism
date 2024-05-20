@@ -10,8 +10,7 @@
       },
       "compress_output": false,
       "overwrite_existing": true,
-      "debug_mode": false,
-      "clear_ancillary": false
+      "clear_ancillary": true
     },
     "general": {
       "title": "IDW",
