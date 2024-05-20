@@ -249,7 +249,7 @@ def importTimeSeries(timeseries_settings, start_time, end_time, time_frequency):
             data_name = os.path.join(timeseries_settings['data_files']['folder'],
                                      timeseries_settings['data_files']['filename'].format(station_name=station_name))
             dfData[station_name] = pd.read_csv(data_name, delimiter=timeseries_settings['data_files']['delimiter'], header=None, usecols=[timeseries_settings['data_files']['datetime_col'],timeseries_settings['data_files']['data_col']], parse_dates=True,
-                                               index_col=timeseries_settings['data_files']['datetime_col']).resample(
+                                               index_col=timeseries_settings['data_files']['datetime_col'], dtype={1:"float32"}).resample(
                 time_frequency).sum()
         except:
             logging.warning(' ---> WARINING! Station ' + station_name + ' not found!')
@@ -293,10 +293,16 @@ def check_and_write_dataarray(variable, grid, var_name='precip', lat_var_name='l
 
 def write_raster(variable, grid, file_out, driver='GTiff'):
     variable = variable.astype(np.float32)
-    with rio.open(file_out, 'w', driver=driver,
+    try:
+        with rio.open(file_out, 'w', driver=driver,
                   height=variable.shape[0], width=variable.shape[1], count=1, dtype=variable.dtype,
                   crs='+proj=latlong', transform=grid.transform, compress='DEFLATE') as dst:
-        dst.write(variable, 1)
+            dst.write(variable, 1)
+    except ValueError:
+        with rio.open(file_out, 'w', driver=driver,
+                  height=variable.squeeze().shape[0], width=variable.squeeze().shape[1], count=1, dtype=variable.dtype,
+                  crs='+proj=latlong', transform=grid.transform, compress='DEFLATE') as dst:
+            dst.write(variable.squeeze(), 1)
 
 # --------------------------------------------------------------------------------------
 

@@ -21,7 +21,7 @@ import pandas as pd
 from itertools import combinations
 from multiprocessing import Pool, Manager
 
-from prism.libs.griso.libs_model_griso_generic import deg2km, spheric, averageCells, cart2pol, sphericalFit
+from prism.libs.libs_generic_spatial import deg2km, spheric, averageCells, cart2pol, sphericalFit
 
 # -------------------------------------------------------------------------------------
 

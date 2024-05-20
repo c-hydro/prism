@@ -1,0 +1,126 @@
+{
+  "algorithm": {
+    "flags": {
+      "sources": {
+        "use_webdrops": false,
+        "use_drops2": false,
+        "use_timeseries": true,
+        "use_point_data": false,
+        "non_standard_tab_fields": true
+      },
+      "compress_output": false,
+      "overwrite_existing": true,
+      "debug_mode": false,
+      "clear_ancillary": false
+    },
+    "general": {
+      "title": "IDW",
+      "web-site": "https://github.com/c-hydro/prism",
+      "source": "Python library developed by CIMA Research Foundation",
+      "history": "2.5.3 [20220726]",
+      "project-info": "PRISM - PRecipitation Interpolation and Spatialization Models",
+      "algorithm": "Data dynamic tool developed by CIMA Research Foundation"
+    },
+    "template": {
+      "source_gridded_sub_path_time": "%Y/%m/%d/",
+      "source_gridded_datetime": "%Y%m%d%H%M",
+      "source_point_sub_path_time": "%Y/%m/%d/",
+      "source_point_datetime": "%Y%m%d%H%M",
+      "outcome_sub_path_time": "%Y/%m/%d/",
+      "outcome_datetime": "%Y%m%d%H%M"
+    },
+    "settings": {
+      "exponent_idw": 2,
+      "npoints_idw": null
+    }
+  },
+  "data": {
+    "static": {
+      "grid": "/home/andrea/Projects/Lebanon/HMC/Hydro derivatives/gridded/Liban.dem.txt"
+    },
+    "dynamic": {
+      "time": {
+        "time_observed_period": 24,
+        "time_forecast_period": 0,
+        "time_frequency": "1D"
+      },
+      "source_gridded": {
+        "filename": "RADAR_{source_gridded_datetime}00.tif",
+        "folder": "/home/andrea/CIMA/DEVELOPEMENT/conditional_merging/caso_studio2/dynamic_data/sources/radar/{source_gridded_sub_path_time}",
+        "file_type": "tif",
+        "nc_settings": {
+          "var_name": "precip",
+          "lat_name": "lat",
+          "lon_name": "lon"
+        }
+      },
+      "source_stations": {
+        "webdrops": {
+          "DropsAddress": "https://webdrops.cimafoundation.org/app",
+          "auth_wk_url": "https://testauth.cimafoundation.org/auth/realms/webdrops/.well-known/openid-configuration",
+          "DropsUser": null,
+          "DropsPwd": null,
+          "DropsSensor": "PLUVIOMETRO",
+          "DropsGroup": "ComuneLive%Mozambico",
+          "AcrowebRole": "mozambico",
+          "time_aggregation_sec": 3600
+        },
+        "drops2": {
+          "DropsAddress": "http://dds.cimafoundation.org/dds/rest",
+          "DropsUser": null,
+          "DropsPwd": null,
+          "DropsSensor": "PLUVIOMETRO",
+          "DropsGroup": "ComuneLive%Mozambico",
+          "lon_left": 5.61,
+          "lon_right": 19,
+          "lat_top": 47.56,
+          "lat_bottom": 35.24,
+          "codes_not_valid": []
+        },
+        "time_series": {
+          "coordinates_file": {
+            "filename" : "Coordinates.txt",
+            "folder": "/home/andrea/Projects/Lebanon/rainfall/Gage coordinates/",
+            "delimiter": ",",
+            "station_name_col": 0,
+            "lat_col": 2,
+            "lon_col": 3
+          },
+          "data_files": {
+            "filename" : "{station_name}.txt",
+            "folder": "/home/andrea/Projects/Lebanon/rainfall/RF records txt/",
+            "delimiter": ",",
+            "datetime_col": 0,
+            "data_col": 1
+          }
+        },
+        "point_files":{
+          "filename" : "pluviometri_{source_point_datetime}",
+          "folder": "/home/andrea/CIMA/DEVELOPEMENT/conditional_merging/caso_studio2/dynamic_data/sources/gauge/{source_point_sub_path_time}",
+          "non_standard_tab_fields": {
+            "separator": ",",
+            "header": false,
+            "latitude": 0,
+            "longitude": 1,
+            "data": 2,
+            "station_name": null,
+            "station_code": null
+          }
+        }
+      }
+    },
+    "ancillary": {
+      "folder": "/home/andrea/CIMA/DEVELOPEMENT/conditional_merging/caso_studio2/ancillary_data/{outcome_sub_path_time}"
+    },
+    "outcome": {
+      "format": "tif",
+      "filename": "idw-rainfall_{outcome_datetime}.tif",
+      "folder": "/home/andrea/CIMA/DEVELOPEMENT/conditional_merging/caso_studio2/outcome_data/{outcome_sub_path_time}"
+    },
+    "log": {
+      "filename": "hyde_conditional_merging.txt",
+      "folder": "/home/andrea/CIMA/DEVELOPEMENT/conditional_merging/caso_studio2/"
+    }
+  }
+}
+
