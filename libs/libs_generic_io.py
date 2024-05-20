@@ -251,9 +251,12 @@ def importTimeSeries(timeseries_settings, start_time, end_time, time_frequency):
             dfData[station_name] = pd.read_csv(data_name, delimiter=timeseries_settings['data_files']['delimiter'], header=None, usecols=[timeseries_settings['data_files']['datetime_col'],timeseries_settings['data_files']['data_col']], parse_dates=True,
                                                index_col=timeseries_settings['data_files']['datetime_col'], dtype={1:"float32"}).resample(
                 time_frequency).sum()
-        except:
+        except FileNotFoundError:
             logging.warning(' ---> WARINING! Station ' + station_name + ' not found!')
             continue
+        except ValueError:
+            logging.error(' ---> ERROR! Cannot read station ' + station_name + ' not found! Check if the file is correctly formatted')
+            raise ValueError
 
     logging.info(' ---> Checking for empty or not-valid series')
     # Check empty stations
