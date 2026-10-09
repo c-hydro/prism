@@ -1,0 +1,50 @@
+{
+  "flags": {
+    "debug": false,
+    "overwrite": false,
+    "skip_missing_steps": false
+  },
+  "settings": {
+    "domain": "example"
+  },
+  "time": {
+    "frequency": "1h",
+    "steps": 1,
+    "direction": "backward"
+  },
+  "algorithm": {
+    "radius_km": 30,
+    "min_radius_km": 5,
+    "correlation": "dynamic"
+  },
+  "input": {
+    "stations": {
+      "type": "timestep",
+      "file": "examples/{domain}/raingauge_cell_value_%Y%m%d_%H%M.txt",
+      "delimiter": "\\s+",
+      "header": false,
+      "columns": {
+        "lon": 0,
+        "lat": 1,
+        "value": 2
+      },
+      "nodata": -9999
+    },
+    "grid": {
+      "file": "examples/{domain}/SRT1_%Y%m%d%H%M.tif",
+      "srs": "EPSG:4326"
+    },
+    "background": {
+      "file": "examples/{domain}/SRT1_%Y%m%d%H%M.tif",
+      "srs": "EPSG:4326",
+      "nodata": -9999
+    }
+  },
+  "outcome": {
+    "file": "examples/{domain}/output/griso_dynamic_%Y%m%d%H%M.tif",
+    "nodata": -9999
+  },
+  "log": {
+    "file": "examples/{domain}/logs/prism_griso_dynamic_%Y%m%d%H%M.log"
+  }
+}

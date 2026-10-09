@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prism-griso"
+version = "2.0.0"
+description = "GRISO rain-gauge interpolation on regular geographic grids"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name="CIMA Research Foundation"}]
+license = {file = "LICENSE"}
+dependencies = [
+  "numpy>=1.23,<3",
+  "scipy>=1.9",
+  "pandas>=1.5",
+  "xarray>=2023.1",
+  "rasterio>=1.3"
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+netcdf = ["netCDF4>=1.6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["prism", "prism.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
